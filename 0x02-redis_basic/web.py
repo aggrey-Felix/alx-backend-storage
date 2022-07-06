@@ -1,21 +1,25 @@
 #!/usr/bin/env python3
 """ implement a get_page function (prototype: def get_page(url: str) -> str:)
  """
+from functools import wraps
 import redis
 import requests
-r = redis.Redis()
-count = 0
+from typing import Callable
+
+redis_ = redis.Redis()
 
 
-def get_page(url: str) -> str:
-    """Inside get_page track how many times a particular URL was accessed in the key "count:{url}" and cache the result with an expiration time of 10 seconds
-"""
-    r.set(f"cached:{url}", count)
-    resp = requests.get(url)
-    r.incr(f"count:{url}")
-    r.setex(f"cached:{url}", 10, r.get(f"cached:{url}"))
-    return resp.text
+def count_requests(method: Callable) -> Callable:
+    """ Decortator for counting """
+    @wraps(method)
+    def wrapper(url):  # sourcery skip: use-named-expression
+        """ Wrapper for decorator """
+        redis_.incr(f"count:{url}")
+        cached_html = redis_.get(f"cached:{url}")
+        if cached_html:
+            return cached_html.decode('utf-8')
+        html = method(url)
+        redis_.setex(f"cached:{url}", 10, html)
+        return html
 
-
-if __name__ == "__main__":
-    get_page('http://slowwly.robertomurray.co.uk')
+    return wrapper
